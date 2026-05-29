@@ -27,10 +27,57 @@ async function inviaMessaggio(numero, testo) {
     return response.json();
 }
 
-app.post('/webhook', async function(req, res) {
-    res.sendStatus(200);
+async function gestisciMessaggio(mittente, testo) {
+    console.log('Messaggio da ' + mittente + ': ' + testo);
 
-    var messages = req.body.messages;
+    if (!conversazioni[mittente]) {
+        conversazioni[mittente] = [];
+    }
+
+    conversazioni[mittente].push({ role: 'user', content: testo });
+
+    if (conversazioni[mittente].length > 20) {
+        conversazioni[mittente] = conversazioni[mittente].slice(-20);
+    }
+
+    try {
+        var risposta = await anthropic.messages.create({
+            model: 'claude-sonnet-4-5',
+            max_tokens: 500,
+            system: SYSTEM_PROMPT,
+            messages: conversazioni[mittente]
+        });
+
+        var testo_risposta = risposta.content[0].text;
+        conversazioni[mittente].push({ role: 'assistant', content: testo_risposta });
+
+        console.log('Risposta: ' + testo_risposta);
+        await inviaMessaggio(mittente, testo_risposta);
+
+        var parole_chiave = ['prenoto', 'confermo', 'perfetto', 'va bene', 'procediamo'];
+        var escalation = parole_chiave.some(function(p) { return testo.toLowerCase().includes(p); });
+        if (escalation) {
+            console.log('*** ESCALATION - Intervieni tu! Numero: ' + mittente + ' ***');
+        }
+
+    } catch (err) {
+        console.error('Errore:', err);
+        await inviaMessaggio(mittente, 'Ciao! Ho un problema tecnico. Quirino ti risponde a breve!');
+    }
+}
+
+// Gestisce tutti i percorsi webhook
+app.post('/webhook', gestisciBody);
+app.post('/webhook/messages', gestisciBody);
+app.post('/messages', gestisciBody);
+
+async function gestisciBody(req, res) {
+    res.sendStatus(200);
+    console.log('Webhook ricevuto:', JSON.stringify(req.body).substring(0, 200));
+
+    var body = req.body;
+    var messages = body.messages || (body.message ? [body.message] : null);
+    
     if (!messages || messages.length === 0) return;
 
     for (var i = 0; i < messages.length; i++) {
@@ -38,49 +85,13 @@ app.post('/webhook', async function(req, res) {
         if (msg.from_me) continue;
         if (msg.type !== 'text') continue;
 
-        var mittente = msg.chat_id;
-        var testo = msg.text && msg.text.body;
+        var mittente = msg.chat_id || msg.from;
+        var testo = (msg.text && msg.text.body) || msg.body;
         if (!testo) continue;
 
-        console.log('Messaggio da ' + mittente + ': ' + testo);
-
-        if (!conversazioni[mittente]) {
-            conversazioni[mittente] = [];
-        }
-
-        conversazioni[mittente].push({ role: 'user', content: testo });
-
-        if (conversazioni[mittente].length > 20) {
-            conversazioni[mittente] = conversazioni[mittente].slice(-20);
-        }
-
-        try {
-            var risposta = await anthropic.messages.create({
-                model: 'claude-sonnet-4-5',
-                max_tokens: 500,
-                system: SYSTEM_PROMPT,
-                messages: conversazioni[mittente]
-            });
-
-            var testo_risposta = risposta.content[0].text;
-            conversazioni[mittente].push({ role: 'assistant', content: testo_risposta });
-
-            console.log('Risposta: ' + testo_risposta);
-
-            await inviaMessaggio(mittente, testo_risposta);
-
-            var parole_chiave = ['prenoto', 'confermo', 'perfetto', 'va bene', 'procediamo'];
-            var escalation = parole_chiave.some(function(p) { return testo.toLowerCase().includes(p); });
-            if (escalation) {
-                console.log('*** ESCALATION - Intervieni tu! Numero: ' + mittente + ' ***');
-            }
-
-        } catch (err) {
-            console.error('Errore:', err);
-            await inviaMessaggio(mittente, 'Ciao! Ho un problema tecnico. Quirino ti risponde a breve!');
-        }
+        await gestisciMessaggio(mittente, testo);
     }
-});
+}
 
 app.listen(process.env.PORT || 3000, function() {
     console.log('Bot Whapi avviato!');
