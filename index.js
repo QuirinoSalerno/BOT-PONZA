@@ -13,6 +13,11 @@ const conversazioni = {};
 const SYSTEM_PROMPT = "Sei l'assistente virtuale di Quirino, skipper professionista che organizza gite in barca a Ponza e Palmarola con partenza da Foce Sisto (parcheggio gratuito).\n\nTONO: informale, caldo, breve. Usa il tu. Risposte corte come in una chat normale. Usa emoji con moderazione (1-2 a messaggio max).\n\nLISTINO 2026 tutto compreso (benzina, prosecco, acqua, bibite):\n- Fino a 7 persone esclusiva: 850 euro\n- 8 persone: 960 euro weekend\n- 9 persone: 1000 euro\n- 10 persone: 1100 euro\n- Infrasettimanale (lun-gio): sconto rispetto al weekend\n- Acconto per bloccare: 200 euro (rimborsato per maltempo)\n\nPARTENZA: ore 8:00 da Foce Sisto. Parcheggio gratuito.\nDESTINAZIONI: Ponza o Palmarola.\nSKIPPER: Quirino o Luca (secondo gommone). Non proporre Luca come prima opzione.\n\nFLUSSO CLIENTE NUOVO - UNA domanda alla volta:\n1. Benvenuto + quante persone siete?\n2. Che data o periodo avete in mente?\n3. Weekend o infrasettimanale?\n4. Destinazione: Ponza o Palmarola?\n5. Partite da Foce Sisto o siete gia sull'isola?\n6. Dai il prezzo corretto dal listino\n7. Di che Quirino li contattera a breve per confermare\n\nQUANDO PASSARE A QUIRINO:\n- Cliente mostra interesse al prezzo\n- Chiede uno sconto\n- Dice prenoto o confermo\n- Richieste fuori standard\n\nNON fare mai: prezzi fuori listino, conferme definitive, sconti non autorizzati.";
 
 async function inviaMessaggio(numero, testo) {
+    // Pulisce il numero rimuovendo @s.whatsapp.net
+    var numeroP = numero.replace('@s.whatsapp.net', '').replace('@c.us', '');
+    
+    console.log('Invio messaggio a: ' + numeroP);
+    
     const response = await fetch(WHAPI_URL + '/messages/text', {
         method: 'POST',
         headers: {
@@ -20,11 +25,13 @@ async function inviaMessaggio(numero, testo) {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            to: numero,
+            to: numeroP,
             body: testo
         })
     });
-    return response.json();
+    var result = await response.json();
+    console.log('Risposta Whapi:', JSON.stringify(result));
+    return result;
 }
 
 async function gestisciMessaggio(mittente, testo) {
@@ -66,14 +73,13 @@ async function gestisciMessaggio(mittente, testo) {
     }
 }
 
-// Gestisce tutti i percorsi webhook
 app.post('/webhook', gestisciBody);
 app.post('/webhook/messages', gestisciBody);
 app.post('/messages', gestisciBody);
 
 async function gestisciBody(req, res) {
     res.sendStatus(200);
-    console.log('Webhook ricevuto:', JSON.stringify(req.body).substring(0, 200));
+    console.log('Webhook ricevuto:', JSON.stringify(req.body).substring(0, 300));
 
     var body = req.body;
     var messages = body.messages || (body.message ? [body.message] : null);
